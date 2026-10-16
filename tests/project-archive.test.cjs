@@ -1,0 +1,43 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {Store}=require('../main/store.cjs'),{exportProject,importProject,readArchive}=require('../main/project-archive.cjs');
+const JSZip=require(require.resolve('jszip',{paths:[path.dirname(require.resolve('docx'))]}));
+const base=path.resolve(__dirname,'../qa-store');fs.mkdirSync(base,{recursive:true});
+function fixture(){
+ const root=fs.mkdtempSync(path.join(base,'project-archive-')),store=new Store(path.join(root,'data')),p=store.saveProject({name:'采购 / 审批项目',code:'MM-2026'}),other=store.saveProject({name:'另一个项目'}),r=store.saveRequirement({projectId:p.id,title:'审批规则',code:'REQ-001',status:'进行中'});
+ const note=store.createNote({projectId:p.id,requirementId:r.id,title:'规则说明',type:'FS 功能说明书',bodyHtml:'<h1>审批规则</h1><p>当前正文</p>'});store.snapshot(note.id,'业务确认');store.updateDocument({id:note.id,bodyHtml:'<h1>审批规则</h1><p>最后保存且尚未快照的正文</p>'});
+ const file=path.join(root,'字段表.xlsx');fs.writeFileSync(file,Buffer.from([0,1,2,255,3]));const first=store.importFile(file,{projectId:p.id,requirementId:r.id,title:'规则说明'});fs.writeFileSync(file,Buffer.from([9,8,7,6,255]));store.importFile(file,{documentId:first.id});
+ const deleted=store.createNote({projectId:p.id,title:'回收站文档'});store.trash('document',deleted.id);store.saveTask({projectId:p.id,title:'确认字段',documentId:first.id,dueDate:'2026-11-01',notes:'保留备注'});store.saveTask({projectId:p.id,title:'已完成的事项',status:'done'});const t=store.saveTask({projectId:p.id,title:'回收站待办'});store.trash('task',t.id);
+ store.createNote({projectId:other.id,title:'其他项目的独立文档'});store.saveTask({projectId:other.id,title:'其他项目待办'});
+ const current=store.file(first.id),dir=path.join(store.root,'editing',first.id);fs.mkdirSync(dir);fs.writeFileSync(path.join(dir,'字段表.xlsx'),'尚未收回的编辑内容');fs.writeFileSync(path.join(dir,'session.json'),JSON.stringify({name:'字段表.xlsx',versionId:current.id,baselineHash:current.sha256}));
+ const destination=path.join(root,'exports');fs.mkdirSync(destination);return{root,store,p,other,r,note,fileDoc:first,deleted,destination};
+}
+function inventory(store){const tables={};for(const table of ['projects','requirements','documents','versions','tasks','document_requirements'])tables[table]=JSON.parse(JSON.stringify(store.db.prepare(`SELECT * FROM ${table} ORDER BY 1`).all()));const files=fs.readdirSync(path.join(store.root,'files')).sort();return{tables,files};}
+test('单项目导出保留需求、当前文件、全部版本、回收站与外部编辑，不带其他项目',async()=>{
+ const f=fixture(),before=inventory(f.store),result=await exportProject(f.store,f.p.id,f.destination),{archive:a}=readArchive(result.path);
+ assert.equal(result.documents,2);assert.equal(result.tasks,2);assert.equal(result.requirements,1);assert.equal(a.documents.length,3);assert.equal(a.workingCopies.length,1);assert.equal(a.tasks.length,3);assert.ok(a.documents.every(d=>d.project_id===f.p.id));assert.ok(!JSON.stringify(a).includes('其他项目的独立文档'));assert.ok(!JSON.stringify(a).includes('source_path'));
+ const file=a.documents.find(d=>d.id===f.fileDoc.id),note=a.documents.find(d=>d.id===f.note.id);assert.match(file.readablePath,/REQ-001_审批规则\/规则说明\.xlsx$/);assert.match(note.readablePath,/规则说明\.docx$/);assert.deepEqual(fs.readFileSync(path.join(result.path,file.readablePath)),Buffer.from([9,8,7,6,255]));assert.equal(a.documents.find(d=>d.id===f.deleted.id).readablePath,null);assert.deepEqual(inventory(f.store),before);
+ const zip=await JSZip.loadAsync(fs.readFileSync(path.join(result.path,'项目与待办清单.xlsx')));assert.equal(Object.keys(zip.files).filter(s=>/^xl\/worksheets\/sheet\d.xml$/.test(s)).length,4);assert.match(await zip.file('xl/workbook.xml').async('string'),/待办清单/);assert.match(await zip.file('xl/worksheets/sheet4.xml').async('string'),/保留备注/);assert.match(await zip.file('xl/worksheets/sheet3.xml').async('string'),/规则说明\.xlsx/);assert.ok(!Object.keys(zip.files).some(s=>s.startsWith('word/')));console.log('ARCHIVE_SAMPLE',result.path);f.store.close();
+});
+test('重新导入创建独立项目并重映射所有关联，保留当前正文、版本、待办与编辑副本',async()=>{
+ const f=fixture(),result=await exportProject(f.store,f.p.id,f.destination),before=inventory(f.store),restored=await importProject(f.store,result.path);assert.notEqual(restored.projectId,f.p.id);assert.match(restored.projectName,/归档导入/);assert.equal(f.store.project(f.p.id).name,f.p.name);
+ const docs=f.store.db.prepare('SELECT * FROM documents WHERE project_id=?').all(restored.projectId),note=docs.find(d=>d.kind==='note'&&!d.deleted_at),file=docs.find(d=>d.kind==='file');assert.match(note.body_html,/尚未快照/);assert.equal(f.store.getDocument(note.id).versions.length,f.store.getDocument(f.note.id).versions.length);assert.notEqual(f.store.getDocument(note.id).requirement.id,f.r.id);assert.equal(f.store.getDocument(file.id).requirement.id,f.store.getDocument(note.id).requirement.id);
+ assert.deepEqual(fs.readFileSync(f.store.file(file.id).path),Buffer.from([9,8,7,6,255]));assert.equal(f.store.listTasks({projectId:restored.projectId}).find(t=>t.title==='确认字段').document_id,file.id);assert.equal(f.store.listTasks({projectId:restored.projectId}).find(t=>t.title==='已完成的事项').status,'done');
+ const session=JSON.parse(fs.readFileSync(path.join(f.store.root,'editing',file.id,'session.json')));assert.equal(session.versionId,file.current_version_id);assert.equal(fs.readFileSync(path.join(f.store.root,'editing',file.id,session.name),'utf8'),'尚未收回的编辑内容');
+ for(const [table,rows] of Object.entries(before.tables)){const after=f.store.db.prepare(`SELECT * FROM ${table}`).all();for(const row of rows)assert.ok(after.some(r=>JSON.stringify(r)===JSON.stringify(row)),table+' original rows preserved');}assert.equal(f.store.db.prepare('PRAGMA foreign_key_check').all().length,0);f.store.close();
+});
+test('归档文件被修改时拒绝导入，现有记录和文件保持不变',async()=>{
+ const f=fixture(),result=await exportProject(f.store,f.p.id,f.destination),a=readArchive(result.path).archive,target=a.versions.find(v=>v.archivePath);const data=fs.readFileSync(path.join(result.path,target.archivePath));data[0]^=1;fs.writeFileSync(path.join(result.path,target.archivePath),data);const before=inventory(f.store);await assert.rejects(importProject(f.store,result.path),/校验失败/);assert.deepEqual(inventory(f.store),before);assert.ok(!fs.readdirSync(f.store.root).some(s=>s.startsWith('.project-import-')));f.store.close();
+});
+test('路径越界、缺失需求和重复编号不能写入数据库',async()=>{
+ const f=fixture(),result=await exportProject(f.store,f.p.id,f.destination),manifest=path.join(result.path,'项目归档.json'),original=fs.readFileSync(manifest,'utf8'),before=inventory(f.store);
+ for(const mutate of [a=>a.files[0].path='../outside.txt',a=>a.documents[0].requirement_id='missing',a=>a.tasks.push(a.tasks[0])]){const a=JSON.parse(original);mutate(a);fs.writeFileSync(manifest,JSON.stringify(a));await assert.rejects(importProject(f.store,result.path));assert.deepEqual(inventory(f.store),before);}f.store.close();
+});
+test('数据库写入失败时回滚新增项目并移除暂存及新附件',async()=>{
+ const f=fixture(),result=await exportProject(f.store,f.p.id,f.destination),before=inventory(f.store);f.store.db.exec("CREATE TRIGGER fail_archive_version BEFORE INSERT ON versions BEGIN SELECT RAISE(ABORT,'test import rollback'); END;");await assert.rejects(importProject(f.store,result.path),/test import rollback/);assert.deepEqual(inventory(f.store),before);assert.ok(!fs.readdirSync(f.store.root).some(s=>s.startsWith('.project-import-')));f.store.close();
+});
+test('同名文件、Windows 保留字符和重复导出不会覆盖文件',async()=>{
+ const f=fixture();f.store.createNote({projectId:f.p.id,requirementId:f.r.id,title:'规则说明'});f.store.createNote({projectId:f.p.id,requirementId:f.r.id,title:'CON'});f.store.createNote({projectId:f.p.id,title:'=1+1'});const first=await exportProject(f.store,f.p.id,f.destination),second=await exportProject(f.store,f.p.id,f.destination);assert.notEqual(first.path,second.path);const a=readArchive(first.path).archive,paths=a.documents.filter(d=>d.readablePath).map(d=>d.readablePath.toLowerCase());assert.equal(new Set(paths).size,paths.length);assert.ok(paths.some(s=>s.endsWith('_con.docx')));assert.ok(paths.some(s=>s.endsWith('规则说明 (2).docx')));const zip=await JSZip.loadAsync(fs.readFileSync(path.join(first.path,'项目与待办清单.xlsx'))),sheet=await zip.file('xl/worksheets/sheet3.xml').async('string');assert.match(sheet,/=1\+1/);assert.doesNotMatch(sheet,/<f>/);f.store.close();
+});
+test('导出失败不留下半成品，并拒绝把归档写进正在使用的数据目录',async()=>{
+ const f=fixture();await assert.rejects(exportProject(f.store,f.p.id,f.store.root),/data/);const file=f.store.file(f.fileDoc.id);fs.renameSync(file.path,file.path+'.missing');const before=fs.readdirSync(f.destination);await assert.rejects(exportProject(f.store,f.p.id,f.destination));assert.deepEqual(fs.readdirSync(f.destination),before);f.store.close();
+});

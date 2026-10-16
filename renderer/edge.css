@@ -1,0 +1,7 @@
+*{box-sizing:border-box}html,body{margin:0;width:32px;height:80px;overflow:hidden;background:transparent;font-family:"Segoe UI Variable","Segoe UI",sans-serif}
+button{position:absolute;top:4px;right:0;width:28px;height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0;border:1px solid #ffffff4d;border-right:0;border-radius:13px 0 0 13px;background:linear-gradient(160deg,#7376dc,#5a5fc8);color:#fff;box-shadow:-2px 2px 5px #29366518;cursor:grab;user-select:none;touch-action:none;-webkit-app-region:no-drag;transition:background .16s,border-radius .16s}
+.monogram{font-size:10px;font-weight:650;letter-spacing:-.3px;line-height:1.4}.chevron{font-size:21px;font-weight:400;line-height:16px;opacity:.85}.grip{position:absolute;top:8px;width:9px;height:2px;border-radius:2px;background:#ffffff42;opacity:0;transition:opacity .16s}
+body[data-side=left] button{right:auto;left:0;border-left:0;border-right:1px solid #ffffff4d;border-radius:0 13px 13px 0;box-shadow:2px 2px 5px #29366518}
+button:hover{background:linear-gradient(160deg,#7d80e4,#6368d0)}button:hover .grip,button:focus-visible .grip{opacity:1}button:focus-visible{outline:2px solid white;outline-offset:-4px}
+button.dragging{cursor:grabbing;border:1px solid #ffffff66!important;border-radius:13px!important;box-shadow:0 2px 5px #29366524}
+@media(prefers-reduced-motion:reduce){button,.grip{transition:none}}

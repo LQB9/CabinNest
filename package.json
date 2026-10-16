@@ -1,0 +1,36 @@
+{
+  "name": "cabinnest",
+  "productName": "CabinNest",
+  "version": "1.10.0",
+  "description": "个人本地项目文档与待办管理",
+  "main": "main/index.cjs",
+  "private": true,
+  "author": "CabinNest",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "start": "electron build-app",
+    "test": "node --test tests/store.test.cjs tests/requirements-store.test.cjs tests/project-archive.test.cjs tests/dock-position.test.cjs",
+    "package": "node scripts/package.cjs"
+  },
+  "dependencies": {
+    "@tiptap/extension-image": "3.32.0",
+    "@tiptap/extension-placeholder": "3.32.0",
+    "@tiptap/extension-table": "3.32.0",
+    "@tiptap/react": "3.32.0",
+    "@tiptap/starter-kit": "3.32.0",
+    "docx-preview": "0.4.1",
+    "docx": "9.6.1",
+    "htmlparser2": "10.1.0",
+    "lucide-react": "1.57.0",
+    "mammoth": "1.13.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "sanitize-html": "2.18.1"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.7.2",
+    "esbuild": "0.28.2"
+  }
+}
