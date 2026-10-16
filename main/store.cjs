@@ -215,7 +215,7 @@ class Store {
     this.db.prepare(`UPDATE ${table} SET deleted_at=?,updated_at=? WHERE id=?`).run(restore?null:now(),now(),id);
   }
   trashList(){return { documents:this.db.prepare('SELECT d.id,d.title,d.type,d.deleted_at,p.name project_name FROM documents d LEFT JOIN projects p ON p.id=d.project_id WHERE d.deleted_at IS NOT NULL ORDER BY d.deleted_at DESC').all(), tasks:this.db.prepare('SELECT id,title,deleted_at FROM tasks WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC').all() };}
-  bootstrap(){return {projects:this.projects(),requirements:this.requirements(),documents:this.listDocuments(),tasks:this.listTasks(),trash:this.trashList(),info:{version:'1.10.0',dataDir:this.root,backupDir:path.join(this.root,'backups'),storageBytes:directorySize(path.join(this.root,'files'))}};}
+  bootstrap(){return {projects:this.projects(),requirements:this.requirements(),documents:this.listDocuments(),tasks:this.listTasks(),trash:this.trashList(),info:{version:require('../package.json').version,dataDir:this.root,backupDir:path.join(this.root,'backups'),storageBytes:directorySize(path.join(this.root,'files'))}};}
   backup(destination){
     const filesDir=path.join(this.root,'files'),editingDir=path.join(this.root,'editing');
     for(const restricted of [filesDir,editingDir])if(path.resolve(destination)===restricted||path.resolve(destination).startsWith(restricted+path.sep))throw new Error('请选择文件副本目录以外的位置保存备份');
@@ -264,5 +264,5 @@ class Store {
   close(){this.db.close();}
 }
 function directorySize(dir){let size=0;for(const f of fs.readdirSync(dir,{withFileTypes:true})){const p=path.join(dir,f.name);if(f.isFile())size+=fs.statSync(p).size;}return size;}
-function inferType(filename){const s=path.basename(filename).toLowerCase();if(/(^|[^a-z])fs(?=[^a-z]|$)|功能说明|功能规格/.test(s))return TYPES[0];if(/技术说明/.test(s))return '技术说明';if(/交接|handover/.test(s))return TYPES[1];if(/设计|(^|[^a-z])ts(?=[^a-z]|$)|technical.design/.test(s))return TYPES[2];if(/测试|验收|test/.test(s))return TYPES[3];if(/会议|纪要|meeting/.test(s))return TYPES[4];if(/笔记|notes|abap/.test(s))return TYPES[5];return TYPES[6];}
+function inferType(filename){const s=path.basename(filename).toLowerCase();if(/(^|[^a-z])fs(?=[^a-z]|$)|功能说明|功能规格/.test(s))return TYPES[0];if(/技术(?:说明|文档)|开发(?:技术)?(?:说明|文档)/.test(s))return '技术说明';if(/交接|handover/.test(s))return TYPES[1];if(/设计|(^|[^a-z])ts(?=[^a-z]|$)|technical.design/.test(s))return TYPES[2];if(/测试|验收|test/.test(s))return TYPES[3];if(/会议|纪要|meeting/.test(s))return TYPES[4];if(/笔记|notes|abap/.test(s))return TYPES[5];return TYPES[6];}
 module.exports={Store,within,inferType,cleanBody,plain};

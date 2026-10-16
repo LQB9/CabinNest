@@ -1,6 +1,8 @@
 const button=document.querySelector('button');
-const updateDock=state=>{document.body.dataset.side=state.side;document.body.classList.toggle('snapping',state.snapping);button.querySelector('.chevron').textContent=state.side==='left'?'›':'‹';};
+const updateDock=state=>{document.body.dataset.side=state.side;document.body.classList.toggle('snapping',state.snapping);document.body.classList.toggle('idle',state.idle);button.querySelector('.chevron').textContent=state.side==='top'?'⌄':state.side==='left'?'›':'‹';};
 window.panel.onDockState(updateDock);window.panel.getDockState().then(updateDock).catch(()=>{});
+button.addEventListener('pointerenter',()=>window.panel.activity({hovered:true}));button.addEventListener('pointerleave',()=>window.panel.activity({hovered:false}));
+window.addEventListener('keydown',()=>window.panel.activity({}));window.addEventListener('focus',()=>window.panel.activity({}));
 let active=null,completedDrag=null;
 button.addEventListener('pointerdown',event=>{
  if(event.button!==0||active)return;

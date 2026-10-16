@@ -17,7 +17,7 @@ async function build(){
  fs.writeFileSync(path.join(out,'renderer/index.html'),fs.readFileSync(path.join(root,'renderer/index.html'),'utf8').replace("script-src 'self'","script-src 'self' "+scriptHash));
  for(const f of ['preload.cjs','edge-preload.cjs'])fs.copyFileSync(path.join(root,'main',f),path.join(out,'main',f));
  for(const f of ['icon.png','icon.ico'])if(fs.existsSync(path.join(root,'assets',f)))fs.copyFileSync(path.join(root,'assets',f),path.join(out,'assets',f));
- fs.writeFileSync(path.join(out,'package.json'),JSON.stringify({name:'cabinnest',productName:'CabinNest',version:'1.10.0',main:'main/index.cjs',description:'个人本地项目资料与待办管理',author:'CabinNest'},null,2));
+ fs.writeFileSync(path.join(out,'package.json'),JSON.stringify({name:'cabinnest',productName:'CabinNest',version:require('../package.json').version,main:'main/index.cjs',description:'个人本地项目资料与待办管理',author:'CabinNest'},null,2));
  console.log('BUILD_OK',out);
 }
 build().catch(e=>{console.error(e);process.exit(1)});

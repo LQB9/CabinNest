@@ -128,10 +128,12 @@ function register(){
  secureHandle('desk:reveal-data',()=>shell.openPath(dataRoot));
  secureHandle('desk:get-presentation',()=>presentation.getState());
  secureHandle('desk:set-presentation',mode=>presentation.setMode(mode));
+ secureHandle('desk:set-handle-preferences',value=>presentation.setHandlePreferences(value));
  secureHandle('desk:collapse',()=>{presentation.collapse();return presentation.getState();});
  secureHandle('desk:window-action',action=>presentation.action(action));
  ipcMain.on('desk:expand-panel',event=>{if(presentation?.isHandleSender(event))presentation.show();});
  ipcMain.handle('desk:get-handle-state',event=>{if(!presentation?.isHandleSender(event))throw new Error('无效的悬浮入口请求');return presentation.getHandleState();});
+ ipcMain.on('desk:handle-activity',(event,value)=>{if(presentation?.isHandleSender(event))presentation.handleActivity(value);});
  ipcMain.handle('desk:begin-handle-drag',event=>{if(!presentation?.isHandleSender(event))throw new Error('无效的悬浮入口请求');return presentation.beginHandleDrag();});
  ipcMain.on('desk:move-handle-drag',event=>{if(presentation?.isHandleSender(event))presentation.moveHandleDrag();});
  ipcMain.handle('desk:end-handle-drag',event=>{if(!presentation?.isHandleSender(event))throw new Error('无效的悬浮入口请求');return presentation.endHandleDrag();});
