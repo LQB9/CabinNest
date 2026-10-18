@@ -5,6 +5,10 @@ contextBridge.exposeInMainWorld('desk', {
   saveProject:invoke('desk:save-project'),createNote:invoke('desk:create-note'),updateDocument:invoke('desk:update-document'),
   saveRequirement:invoke('desk:save-requirement'),assignRequirement:invoke('desk:assign-requirement'),
   chooseImport:invoke('desk:import'),saveTask:invoke('desk:save-task'),trash:invoke('desk:trash'),
+  resolveImport:invoke('desk:resolve-import'),cancelImport:invoke('desk:cancel-import'),
+  getAutoBackup:invoke('desk:get-auto-backup'),chooseBackupDirectory:invoke('desk:choose-backup-directory'),setAutoBackup:invoke('desk:set-auto-backup'),runAutoBackup:invoke('desk:run-auto-backup'),revealAutoBackup:invoke('desk:reveal-auto-backup'),
+  onAutoBackup(callback){const fn=(_event,state)=>callback(state);ipcRenderer.on('desk:auto-backup',fn);return()=>ipcRenderer.removeListener('desk:auto-backup',fn);},
+  onOpenBackupSettings(callback){const fn=()=>callback();ipcRenderer.on('desk:open-backup-settings',fn);return()=>ipcRenderer.removeListener('desk:open-backup-settings',fn);},
   importDroppedFiles(files,options){
     if(!Array.isArray(files)||!files.length)throw new Error('请从文件管理器拖入文件');
     const paths=files.map(file=>webUtils.getPathForFile(file));
@@ -16,6 +20,7 @@ contextBridge.exposeInMainWorld('desk', {
   viewerHtml:invoke('desk:viewer-html'),
   exportDocument:invoke('desk:export-document'),backup:invoke('desk:backup'),restoreBackup:invoke('desk:restore-backup'),
   exportProject:invoke('desk:export-project'),chooseProjectArchive:invoke('desk:choose-project-archive'),importProjectArchive:invoke('desk:import-project-archive'),revealProjectArchive:invoke('desk:reveal-project-archive'),
+  retireProject:invoke('desk:retire-project'),removeRetiredProject:invoke('desk:remove-retired-project'),previewRetiredProject:invoke('desk:preview-retired-project'),
   onArchiveProgress(callback){const fn=(_event,progress)=>callback(progress);ipcRenderer.on('desk:archive-progress',fn);return()=>ipcRenderer.removeListener('desk:archive-progress',fn);},
   revealData:invoke('desk:reveal-data'),
   getPresentation:invoke('desk:get-presentation'),setPresentation:invoke('desk:set-presentation'),setHandlePreferences:invoke('desk:set-handle-preferences'),collapse:invoke('desk:collapse'),windowAction:invoke('desk:window-action'),

@@ -94,7 +94,7 @@ class Store {
       where.push("(d.title LIKE ? ESCAPE '!' OR d.search_text LIKE ? ESCAPE '!' OR d.tags LIKE ? ESCAPE '!' OR d.summary LIKE ? ESCAPE '!' OR p.name LIKE ? ESCAPE '!' OR r.title LIKE ? ESCAPE '!' OR r.code LIKE ? ESCAPE '!')");
       const q = '%' + text(filters.query, 200).replace(/[!%_]/g, c => '!' + c) + '%'; args.push(q,q,q,q,q,q,q);
     }
-    return this.db.prepare(`SELECT d.id,d.project_id,d.title,d.type,d.status,d.tags,d.summary,d.owner,d.kind,d.pinned,d.index_state,d.created_at,d.updated_at,p.name project_name,v.label version_label,v.ext,v.size,dr.requirement_id,r.title requirement_title,r.code requirement_code FROM documents d LEFT JOIN projects p ON d.project_id=p.id LEFT JOIN versions v ON d.current_version_id=v.id LEFT JOIN document_requirements dr ON dr.document_id=d.id LEFT JOIN requirements r ON r.id=dr.requirement_id WHERE ${where.join(' AND ')} ORDER BY d.pinned DESC,d.updated_at DESC`).all(...args).map(normalize);
+    return this.db.prepare(`SELECT d.id,d.project_id,d.title,d.type,d.status,d.tags,d.summary,d.owner,d.kind,d.pinned,d.index_state,d.created_at,d.updated_at,p.name project_name,v.label version_label,v.ext,v.size,v.file_name,dr.requirement_id,r.title requirement_title,r.code requirement_code FROM documents d LEFT JOIN projects p ON d.project_id=p.id LEFT JOIN versions v ON d.current_version_id=v.id LEFT JOIN document_requirements dr ON dr.document_id=d.id LEFT JOIN requirements r ON r.id=dr.requirement_id WHERE ${where.join(' AND ')} ORDER BY d.pinned DESC,d.updated_at DESC`).all(...args).map(normalize);
   }
   getDocument(id, includeDeleted = false) {
     const d = this.db.prepare(`SELECT d.*,p.name project_name FROM documents d LEFT JOIN projects p ON d.project_id=p.id WHERE d.id=? ${includeDeleted ? '' : 'AND d.deleted_at IS NULL'}`).get(id);
@@ -145,14 +145,16 @@ class Store {
     const existing = input.documentId ? this.getDocument(input.documentId) : null;
     if (existing && existing.kind !== 'file') throw new Error('富文本资料请保存快照');
     const id = existing?.id || uid(), versionId = uid(), storeName = `files/${versionId}${ext}`;
-    const dest = within(this.root, path.join(this.root, storeName)); fs.copyFileSync(source, dest);
+    const dest = within(this.root, path.join(this.root, storeName));
+    let copiedSize;
+    try{fs.copyFileSync(source,dest);copiedSize=fs.statSync(dest).size;if(copiedSize>250*1024*1024)throw new Error('单个文件暂支持最大 250 MB');if(crypto.createHash('sha256').update(fs.readFileSync(dest)).digest('hex')!==hash)throw new Error('源文件在导入时发生变化，请保存后重试');}catch(e){if(fs.existsSync(dest))fs.unlinkSync(dest);throw e;}
     const stamp = now();
     try {
       this.transaction(() => {
         if (!existing) this.db.prepare('INSERT INTO documents(id,project_id,title,type,status,tags,summary,kind,index_state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id, project, required(input.title || path.basename(source, ext), '资料标题'), TYPES.includes(input.type) ? input.type : inferType(source), '草稿', tags(input.tags), text(input.summary), 'file', 'pending', stamp, stamp);
         if(!existing)this.writeRequirement(id,requirement);
         const count = this.db.prepare('SELECT count(*) n FROM versions WHERE document_id=?').get(id).n;
-        this.db.prepare('INSERT INTO versions(id,document_id,label,file_name,store_name,ext,size,sha256,source_path,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(versionId, id, text(input.label || `v${count + 1}`, 80), path.basename(source), storeName, ext, stat.size, hash, source, stamp);
+        this.db.prepare('INSERT INTO versions(id,document_id,label,file_name,store_name,ext,size,sha256,source_path,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(versionId, id, text(input.label || `v${count + 1}`, 80), path.basename(source), storeName, ext, copiedSize, hash, source, stamp);
         this.db.prepare("UPDATE documents SET current_version_id=?,index_state='pending',search_text='',updated_at=? WHERE id=?").run(versionId, stamp, id);
       });
     } catch (e) { fs.unlinkSync(dest); throw e; }
@@ -230,6 +232,10 @@ class Store {
     fs.writeFileSync(path.join(target,'manifest.json'),JSON.stringify(manifest,null,2));return target;
   }
   restoreBackup(source){
+    const prepared=require('./backup-format.cjs').prepareBackupRestore(source,this.root);
+    try{return this.restorePreparedBackup(prepared.path);}finally{prepared.cleanup();}
+  }
+  restorePreparedBackup(source){
     const from=path.resolve(source),manifest=JSON.parse(fs.readFileSync(path.join(from,'manifest.json'),'utf8'));
     if(manifest.app!=='projectdesk'||![1,2].includes(manifest.schema))throw new Error('不是有效的CabinNest备份');
     const dbFile=path.join(from,'projectdesk.sqlite');

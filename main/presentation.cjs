@@ -6,7 +6,7 @@ const modes=new Set(['window','edge','tray']);
 function createPresentation({win,dataRoot,isTest,requestClose}){
  const preferences=path.join(dataRoot,'profile','window.json');
  let saved={};try{saved=JSON.parse(fs.readFileSync(preferences,'utf8'));}catch{}
- let mode=modes.has(saved.mode)?saved.mode:'window',handle,disposed=false,collapsed=false,handleDrag=null;
+ let mode=modes.has(saved.mode)?saved.mode:'window',handle,disposed=false,collapsed=false,handleDrag=null,backupState={};
  let windowBounds=saved.windowBounds,handlePosition=saved.handlePosition,handleSide=['left','right','top'].includes(saved.handleSide)?saved.handleSide:'right',geometryTimer,snapTimer=null,snapDone=null;
  let handlePreferences=normalizeHandlePreferences(saved.handlePreferences),idleTimer=null,opacityTimer=null,handleIdle=false,handleHovered=false;
  const icon=nativeImage.createFromPath(path.join(__dirname,'../assets/icon.png'));
@@ -79,8 +79,12 @@ function createPresentation({win,dataRoot,isTest,requestClose}){
  function menu(){tray.setContextMenu(Menu.buildFromTemplate([
   {label:'打开CabinNest',click:show},{type:'separator'},
   ...[['window','独立窗口'],['edge','侧边面板'],['tray','托盘弹窗']].map(([id,label])=>({label,type:'radio',checked:mode===id,click:()=>setMode(id)})),
-  {type:'separator'},{label:'退出',click:()=>requestClose('quit')}
+  {type:'separator'},{label:backupState.lastError?'自动备份失败 · 查看处理':backupState.running?'正在自动备份…':'备份与设置',click:openBackupSettings},{label:'退出',click:()=>requestClose('quit')}
  ]));}
+ function openBackupSettings(){show();win.webContents.send('desk:open-backup-settings');}
+ function setBackupState(state){backupState=state;if(disposed||tray.isDestroyed())return;tray.setToolTip(state.lastError?'CabinNest · 自动备份失败，请查看备份设置':state.running?'CabinNest · 正在备份资料':'CabinNest · 资料与待办');menu();}
+ function alertBackupFailure(state){if(disposed||tray.isDestroyed()||isTest)return;try{tray.displayBalloon({iconType:'warning',title:'CabinNest 自动备份未完成',content:state.lastError+'\n本机资料仍保留，点击查看备份设置。',respectQuietTime:true});}catch{}}
+ tray.on('balloon-click',openBackupSettings);
  function show(){if(disposed)return;stopSnap();collapsed=false;handleDrag=null;wakeHandle();handle?.hide();if(win.isMinimized())win.restore();layout();win.show();win.focus();notify();}
  function hide(toHandle=mode==='edge'){if(disposed)return;stopSnap();collapsed=toHandle;handleDrag=null;wakeHandle();win.hide();if(toHandle)showHandle();else handle?.hide();notify();}
  function minimize(){if(disposed)return;stopSnap();collapsed=false;handleDrag=null;wakeHandle();handle?.hide();win.setSkipTaskbar(false);win.minimize();notify();}
@@ -100,7 +104,7 @@ function createPresentation({win,dataRoot,isTest,requestClose}){
  win.on('minimize',onMinimize);win.on('restore',onRestore);
  const reposition=()=>{if(mode!=='window'&&!win.isMinimized())layout();if(collapsed)showHandle();};
  screen.on('display-metrics-changed',reposition);screen.on('display-removed',reposition);
- return{getState,setMode,show,hide,collapse:()=>hide(true),notify,getHandleState,beginHandleDrag,moveHandleDrag,endHandleDrag,handleActivity,setHandlePreferences,
+ return{getState,setMode,show,hide,collapse:()=>hide(true),notify,getHandleState,beginHandleDrag,moveHandleDrag,endHandleDrag,handleActivity,setHandlePreferences,setBackupState,alertBackupFailure,
   isHandleSender:event=>handle&&!handle.isDestroyed()&&event.sender===handle.webContents&&event.senderFrame===handle.webContents.mainFrame,
   action(action){if(action==='minimize')minimize();else if(action==='maximize'){if(mode==='window')win.isMaximized()?win.unmaximize():win.maximize();}else if(action==='close')requestClose('hide');else if(action==='quit')requestClose('quit');else throw new Error('未知的窗口操作');return getState();},
   dispose(){disposed=true;stopSnap();handleDrag=null;clearTimeout(geometryTimer);clearTimeout(idleTimer);stopOpacity();win.removeListener('minimize',onMinimize);win.removeListener('restore',onRestore);screen.removeListener('display-metrics-changed',reposition);screen.removeListener('display-removed',reposition);if(handle&&!handle.isDestroyed())handle.destroy();if(!tray.isDestroyed())tray.destroy();}

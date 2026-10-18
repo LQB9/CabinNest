@@ -1,7 +1,7 @@
 {
   "name": "cabinnest",
   "productName": "CabinNest",
-  "version": "1.12.0",
+  "version": "1.16.0",
   "description": "个人本地项目文档与待办管理",
   "main": "main/index.cjs",
   "private": true,
@@ -10,8 +10,9 @@
   "scripts": {
     "build": "node scripts/build.cjs",
     "start": "electron build-app",
-    "test": "node --test tests/store.test.cjs tests/requirements-store.test.cjs tests/project-archive.test.cjs tests/dock-position.test.cjs tests/document-types.test.cjs tests/requirement-expansion.test.cjs tests/handle-preferences.test.cjs",
-    "package": "node scripts/package.cjs"
+    "test": "node --test tests/store.test.cjs tests/requirements-store.test.cjs tests/project-archive.test.cjs tests/dock-position.test.cjs tests/document-types.test.cjs tests/requirement-expansion.test.cjs tests/handle-preferences.test.cjs tests/import-plans.test.cjs tests/auto-backup.test.cjs tests/backup-improvements.test.cjs tests/project-retirement.test.cjs tests/data-location.test.cjs",
+    "package": "node scripts/package.cjs",
+    "installer": "pwsh -File scripts/build-msi.ps1"
   },
   "dependencies": {
     "@tiptap/extension-image": "3.32.0",

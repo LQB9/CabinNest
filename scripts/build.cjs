@@ -6,6 +6,7 @@ async function build(){
  for(const d of ['main','renderer','assets'])fs.mkdirSync(path.join(out,d),{recursive:true});
  await esbuild.build({entryPoints:[path.join(root,'main/index.cjs')],outfile:path.join(out,'main/index.cjs'),bundle:true,platform:'node',format:'cjs',target:'node24',external:['electron','node:*'],logLevel:'info'});
  await esbuild.build({entryPoints:[path.join(root,'main/extract-worker.cjs')],outfile:path.join(out,'main/extract-worker.cjs'),bundle:true,platform:'node',format:'cjs',target:'node24',external:['node:*'],logLevel:'info'});
+ await esbuild.build({entryPoints:[path.join(root,'main/backup-worker.cjs')],outfile:path.join(out,'main/backup-worker.cjs'),bundle:true,platform:'node',format:'cjs',target:'node24',external:['node:*'],logLevel:'info'});
  await esbuild.build({entryPoints:[path.join(root,'renderer/app.jsx')],outfile:path.join(out,'renderer/app.js'),bundle:true,minify:true,platform:'browser',format:'iife',target:'chrome140',define:{'process.env.NODE_ENV':'"production"'},logLevel:'info'});
  await esbuild.build({entryPoints:[path.join(root,'renderer/docx-viewer.js')],outfile:path.join(out,'renderer/docx-viewer.js'),bundle:true,minify:true,platform:'browser',format:'iife',target:'chrome140',logLevel:'info'});
  for(const f of ['index.html','docx-viewer.html','docx-viewer.css','edge.html','edge.css','edge.js'])fs.copyFileSync(path.join(root,'renderer',f),path.join(out,'renderer',f));
