@@ -9,14 +9,21 @@ const {exportProject,importProject,readArchive}=require('./project-archive.cjs')
 const {ImportPlans}=require('./import-plans.cjs');
 const {AutoBackup}=require('./auto-backup.cjs');
 const {ProjectRetirement}=require('./project-retirement.cjs');
-const {resolveDataRoot}=require('./data-location.cjs');
-const dataRoot=resolveDataRoot({override:process.env.PROJECTDESK_DATA_DIR,isPackaged:app.isPackaged,executable:process.execPath,sourceRoot:path.join(__dirname,'..'),markerPath:path.join(__dirname,'../install-mode.json'),localAppData:process.env.LOCALAPPDATA});
-fs.mkdirSync(dataRoot,{recursive:true});app.setPath('userData',path.join(dataRoot,'profile'));
-app.setPath('crashDumps',path.join(dataRoot,'profile','crash-dumps'));
+const {resolveDataRoot,legacyDataRoots,isInstalled}=require('./data-location.cjs');
+const {migrateInstalledData}=require('./data-migration.cjs');
+const dataOptions={override:process.env.PROJECTDESK_DATA_DIR,isPackaged:app.isPackaged,executable:process.execPath,sourceRoot:path.join(__dirname,'..'),markerPath:path.join(__dirname,'../install-mode.json'),localAppData:process.env.LOCALAPPDATA,homeDirectory:app.getPath('home')};
+const dataRoot=resolveDataRoot(dataOptions);
+// Keep the single-instance lock outside the data directory while it is migrated.
+const lockRoot=!dataOptions.override&&isInstalled(dataOptions)?path.join(path.dirname(dataRoot),'instance'):path.join(dataRoot,'profile');
+fs.mkdirSync(lockRoot,{recursive:true});app.setPath('userData',lockRoot);
 app.setName('CabinNest');if(process.platform==='win32')app.setAppUserModelId('CabinNest');
 let win,store,presentation,importPlans,autoBackup,retirement,allowClose=false,closeTimer,closeAction=null,quitFinishing=false,nativeDialogDepth=0,indexing=false,archiveBusy=false,importBusy=false,archiveChoice=null;const queue=[];const queued=new Set();
 const isTest=process.env.PROJECTDESK_TEST==='1';
 const primaryInstance=app.requestSingleInstanceLock();if(!primaryInstance)app.quit();
+let migrationError;
+if(primaryInstance)try{migrateInstalledData({target:dataRoot,candidates:legacyDataRoots(dataOptions)});}catch(error){migrationError=error;}
+fs.mkdirSync(dataRoot,{recursive:true});app.setPath('userData',path.join(dataRoot,'profile'));
+app.setPath('crashDumps',path.join(dataRoot,'profile','crash-dumps'));
 app.on('second-instance',(_event,commandLine)=>{if(commandLine.includes('--quit-for-update'))requestClose('quit');else presentation?.show();});
 function requestClose(action='hide'){
  if(archiveBusy||importBusy||nativeDialogDepth){if(win&&!win.isDestroyed()){win.show();win.focus();}return;}
@@ -177,7 +184,7 @@ function register(){
  ipcMain.on('desk:cancel-close',e=>{if(e.sender===win?.webContents){clearTimeout(closeTimer);closeAction=null;presentation?.show();dialog.showMessageBox(win,{type:'error',message:'笔记保存未完成，请重试后再关闭。'});}});
 }
 app.whenReady().then(()=>{
- if(!primaryInstance)return;store=new Store(dataRoot);importPlans=new ImportPlans(store);retirement=new ProjectRetirement(store);Menu.setApplicationMenu(null);
+ if(!primaryInstance)return;if(migrationError)throw migrationError;store=new Store(dataRoot);importPlans=new ImportPlans(store);retirement=new ProjectRetirement(store);Menu.setApplicationMenu(null);
  win=new BrowserWindow({width:980,height:680,minWidth:780,minHeight:540,frame:false,title:'CabinNest',backgroundColor:'#ffffff',show:false,icon:path.join(__dirname,'../assets/icon.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,spellcheck:false,backgroundThrottling:false}});
  presentation=createPresentation({win,dataRoot,isTest,requestClose});
  autoBackup=new AutoBackup({store,isBusy:()=>archiveBusy||importBusy||nativeDialogDepth>0,onState:state=>{presentation?.setBackupState(state);if(win&&!win.isDestroyed())win.webContents.send('desk:auto-backup',state);},onFailure:state=>presentation?.alertBackupFailure(state)});autoBackup.start();

@@ -79,7 +79,7 @@ foreach($taskFile in $taskFiles){if($taskFile.Attributes -band [IO.FileAttribute
 $taskMarker=Join-Path $taskStage 'install-mode.json';[IO.File]::WriteAllText($taskMarker,'{"app":"CabinNest","mode":"installed","schema":1}',[Text.UTF8Encoding]::new($false))
 $taskEntries=@($taskFiles | ForEach-Object {@{Source=$_.FullName;Relative=[IO.Path]::GetRelativePath($taskPayload,$_.FullName)}})+@(@{Source=$taskMarker;Relative='resources\app\install-mode.json'})
 $taskDdf=[Collections.Generic.List[string]]::new()
-foreach($taskLine in @('.OPTION EXPLICIT','.Set Cabinet=on','.Set Compress=on','.Set CompressionType=MSZIP','.Set MaxDiskSize=0','.Set CabinetNameTemplate=CabinNest.cab',('.Set DiskDirectoryTemplate="'+$taskStage+'"'),('.Set RptFileName="'+(Join-Path $taskStage 'cab.rpt')+'"'),('.Set InfFileName="'+(Join-Path $taskStage 'cab.inf')+'"'))){$taskDdf.Add($taskLine)}
+foreach($taskLine in @('.OPTION EXPLICIT','.Set Cabinet=on','.Set Compress=on','.Set CompressionType=MSZIP','.Set MaxDiskSize=0','.Set CabinetNameTemplate=CabinNest.cab','.Set DiskDirectoryTemplate=.','.Set RptFileName=cab.rpt','.Set InfFileName=cab.inf')){$taskDdf.Add($taskLine)}
 $taskSequence=0;$taskMainId=$null;$taskManifest=@()
 foreach($taskEntry in $taskEntries){
  $taskSequence++;$taskRelative=$taskEntry.Relative;$taskRelativeDirectory=[IO.Path]::GetDirectoryName($taskRelative)
@@ -93,7 +93,7 @@ foreach($taskEntry in $taskEntries){
  $taskFileVersion=if($taskRelative -eq 'CabinNest.exe'){$taskVersion}else{$null}
  Row 'File' @('File','Component_','FileName','FileSize','Version','Attributes','Sequence') @($taskFileId,$taskComponent,[IO.Path]::GetFileName($taskRelative),$taskSize,$taskFileVersion,512,$taskSequence)
  if(-not $taskFileVersion){$taskMd5=[Security.Cryptography.MD5]::HashData([IO.File]::ReadAllBytes($taskEntry.Source));Row 'MsiFileHash' @('File_','Options','HashPart1','HashPart2','HashPart3','HashPart4') @($taskFileId,0,[BitConverter]::ToInt32($taskMd5,0),[BitConverter]::ToInt32($taskMd5,4),[BitConverter]::ToInt32($taskMd5,8),[BitConverter]::ToInt32($taskMd5,12))}
- $taskCabSource=Join-Path $taskStage $taskFileId;Copy-Item -LiteralPath $taskEntry.Source -Destination $taskCabSource; $taskDdf.Add('"'+$taskCabSource+'" '+$taskFileId)
+ $taskCabSource=Join-Path $taskStage $taskFileId;Copy-Item -LiteralPath $taskEntry.Source -Destination $taskCabSource; $taskDdf.Add('"'+$taskFileId+'" '+$taskFileId)
  $taskManifest+=@{path=$taskRelative;sha256=(Get-FileHash -LiteralPath $taskEntry.Source -Algorithm SHA256).Hash.ToLowerInvariant();size=$taskSize}
  if($taskRelative -eq 'CabinNest.exe'){$taskMainId=$taskComponent}
 }
@@ -126,8 +126,9 @@ Control 'ExitDialog' 'Finish' 'PushButton' 280 155 70 24 '完成'
 foreach($taskEvent in @(@('WelcomeDlg','Install','EndDialog','Return'),@('WelcomeDlg','Cancel','EndDialog','Exit'),@('ExitDialog','Finish','EndDialog','Return'))){Row 'ControlEvent' @('Dialog_','Control_','Event','Argument','Condition','Ordering') @($taskEvent[0],$taskEvent[1],$taskEvent[2],$taskEvent[3],'1',1)}
 Row 'EventMapping' @('Dialog_','Control_','Event','Attribute') @('ProgressDlg','Progress','SetProgress','Progress')
 Row 'EventMapping' @('Dialog_','Control_','Event','Attribute') @('ProgressDlg','ActionText','ActionText','Text')
-[IO.File]::WriteAllLines((Join-Path $taskStage 'payload.ddf'),$taskDdf,[Text.Encoding]::Default)
-& "$env:WINDIR\System32\makecab.exe" /F (Join-Path $taskStage 'payload.ddf') | Out-File -LiteralPath (Join-Path $taskStage 'makecab.log')
+[IO.File]::WriteAllLines((Join-Path $taskStage 'payload.ddf'),$taskDdf,[Text.Encoding]::ASCII)
+Push-Location -LiteralPath $taskStage
+try { & "$env:WINDIR\System32\makecab.exe" /F 'payload.ddf' | Out-File -LiteralPath (Join-Path $taskStage 'makecab.log') } finally { Pop-Location }
 if($LASTEXITCODE -ne 0){throw '生成安装压缩包失败'}
 Row 'Media' @('DiskId','LastSequence','Cabinet') @(1,$taskSequence,'#CabinNest.cab')
 $taskView=Call-Com $taskDb 'OpenView' @('INSERT INTO `_Streams` (`Name`,`Data`) VALUES (?,?)');$taskRecord=Call-Com $taskInstaller 'CreateRecord' @(2)
